@@ -1,0 +1,338 @@
+// ==========================================
+// File: network_db.h
+// ==========================================
+#ifndef NETWORK_DB_H
+#define NETWORK_DB_H
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+
+#define TOTALHOSTS 4
+#define MAXMSG 200
+#define MAXBIN 5000
+
+struct Host {
+    char url[30];
+    char ip[20];
+    char mac[25];
+};
+
+struct Frame {
+    char sourceURL[30];
+    char destinationURL[30];
+    char sourceIP[20];
+    char destinationIP[20];
+    char sourceMAC[25];
+    char destinationMAC[25];
+    char message[MAXMSG];
+    char binaryMessage[MAXBIN];
+    char generator[20];
+    char dividend[MAXBIN];
+    char remainder[20];
+    char codeword[MAXBIN];
+};
+
+extern struct Host hostTable[TOTALHOSTS];
+extern struct Frame frame;
+extern char receivedCodeword[MAXBIN];
+extern char recoveredBinary[MAXBIN];
+extern char recoveredMessage[MAXMSG];
+
+#endif
+
+
+// ==========================================
+// File: sender_crc.c
+// ==========================================
+#include "network_db.h"
+
+struct Host hostTable[TOTALHOSTS] = {
+    {"amazon.com", "192.168.10.2", "10:20:30:40:50:60"},
+    {"facebook.com", "192.168.10.3", "11:22:33:44:55:66"},
+    {"youtube.com", "192.168.10.4", "AA:11:BB:22:CC:33"},
+    {"github.com", "192.168.10.5", "12:34:56:78:9A:BC"}
+};
+
+struct Frame frame;
+char receivedCodeword[MAXBIN];
+char recoveredBinary[MAXBIN];
+char recoveredMessage[MAXMSG];
+
+void showHosts() {
+    int i;
+    printf("\nAvailable Host Details\n---------------------------------------------\n");
+    printf("%-5s %-20s %-18s %-22s\n", "No", "URL", "IP Address", "MAC Address");
+    printf("-------------------------------------------------------------\n");
+    for(i = 0; i < TOTALHOSTS; i++) {
+        printf("%-5d %-20s %-18s %-22s\n", i + 1, hostTable[i].url, hostTable[i].ip, hostTable[i].mac);
+    }
+}
+
+int findHost(char url[]) {
+    int i;
+    for(i = 0; i < TOTALHOSTS; i++) {
+        if(strcmp(hostTable[i].url, url) == 0) return i;
+    }
+    return -1;
+}
+
+void parsePolynomial(char expr[], char binaryGen[]) {
+    char upperExpr[100];
+    int presentExponents[50] = {0};
+    int maxDegree = 0;
+    int i = 0, j = 0;
+    char *token;
+
+    for (i = 0; expr[i] != '\0'; i++) {
+        if (expr[i] != ' ' && expr[i] != '\r' && expr[i] != '\n') {
+            upperExpr[j++] = toupper((unsigned char)expr[i]);
+        }
+    }
+    upperExpr[j] = '\0';
+
+    token = strtok(upperExpr, "+");
+    while (token != NULL) {
+        int currentDegree = -1;
+        if (strstr(token, "XPOW") != NULL) {
+            currentDegree = atoi(token + 4);
+        } else if (strcmp(token, "X") == 0) {
+            currentDegree = 1;
+        } else if (strcmp(token, "1") == 0) {
+            currentDegree = 0;
+        }
+
+        if (currentDegree >= 0 && currentDegree < 50) {
+            presentExponents[currentDegree] = 1;
+            if (currentDegree > maxDegree) maxDegree = currentDegree;
+        }
+        token = strtok(NULL, "+");
+    }
+
+    j = 0;
+    for (i = maxDegree; i >= 0; i--) {
+        binaryGen[j++] = (presentExponents[i] == 1) ? '1' : '0';
+    }
+    binaryGen[j] = '\0';
+}
+
+void decimalToBinary(int num, char binary[]) {
+    int i;
+    for(i = 7; i >= 0; i--) {
+        binary[i] = (num % 2) + '0';
+        num /= 2;
+    }
+    binary[8] = '\0';
+}
+
+void convertIP(char ip[]) {
+    char temp[30], binary[9], *token;
+    strcpy(temp, ip);
+    token = strtok(temp, ".");
+    while(token != NULL) {
+        decimalToBinary(atoi(token), binary);
+        printf("%s ", binary);
+        token = strtok(NULL, ".");
+    }
+    printf("\n");
+}
+
+void convertMAC(char mac[]) {
+    char temp[30], binary[9], *token;
+    strcpy(temp, mac);
+    token = strtok(temp, ":");
+    while(token != NULL) {
+        decimalToBinary((int)strtol(token, NULL, 16), binary);
+        printf("%s ", binary);
+        token = strtok(NULL, ":");
+    }
+    printf("\n");
+}
+
+void convertMessage(char message[]) {
+    char binary[9];
+    int i;
+    frame.binaryMessage[0] = '\0';
+    for(i = 0; message[i] != '\0'; i++) {
+        decimalToBinary((unsigned char)message[i], binary);
+        strcat(frame.binaryMessage, binary);
+    }
+}
+
+void sender() {
+    printf("\n=================== SENDER LAYER ===================\n");
+    printf("Original Message               : %s\n", frame.message);
+    printf("\nSOURCE IP IN BINARY           : ");
+    convertIP(frame.sourceIP);
+    printf("DESTINATION IP IN BINARY      : ");
+    convertIP(frame.destinationIP);
+    printf("SOURCE MAC IN BINARY          : ");
+    convertMAC(frame.sourceMAC);
+    printf("DESTINATION MAC IN BINARY     : ");
+    convertMAC(frame.destinationMAC);
+    convertMessage(frame.message);
+    printf("MESSAGE IN BINARY             : %s\n", frame.binaryMessage);
+}
+
+void appendZero() {
+    int i;
+    int k = strlen(frame.generator) - 1;
+    strcpy(frame.dividend, frame.binaryMessage);
+    for(i = 0; i < k; i++) strcat(frame.dividend, "0");
+}
+
+void crc() {
+    char temp[MAXBIN];
+    int i, j, dataLength, generatorLength;
+    strcpy(temp, frame.dividend);
+    dataLength = strlen(temp);
+    generatorLength = strlen(frame.generator);
+
+    for(i = 0; i <= dataLength - generatorLength; i++) {
+        if(temp[i] == '1') {
+            for(j = 0; j < generatorLength; j++) {
+                temp[i + j] = (temp[i + j] == frame.generator[j]) ? '0' : '1';
+            }
+        }
+    }
+
+    strncpy(frame.remainder, &temp[dataLength - (generatorLength - 1)], generatorLength - 1);
+    frame.remainder[generatorLength - 1] = '\0';
+    strcpy(frame.codeword, frame.binaryMessage);
+    strcat(frame.codeword, frame.remainder);
+}
+
+
+// ==========================================
+// File: receiver_main.c
+// ==========================================
+#include "network_db.h"
+
+void binaryToText() {
+    int len = strlen(recoveredBinary);
+    int charCount = 0;
+    int i, j;
+    for(i = 0; i < len; i += 8) {
+        int decimalValue = 0;
+        for(j = 0; j < 8; j++) {
+            decimalValue = (decimalValue << 1) + (recoveredBinary[i + j] - '0');
+        }
+        recoveredMessage[charCount++] = (char)decimalValue;
+    }
+    recoveredMessage[charCount] = '\0';
+}
+
+void receiver() {
+    char temp[MAXBIN];
+    int errorDetected = 0;
+    int i, j, dataLength, generatorLength;
+    int injectError = 0;
+
+    printf("\n=================== RECEIVER DECODING LAYER ===================\n");
+    strcpy(receivedCodeword, frame.codeword);
+    printf("Do you want to inject an error for testing? (1 for Yes, 0 for No): ");
+    scanf("%d", &injectError);
+
+    if(injectError == 1) {
+        receivedCodeword[0] = (receivedCodeword[0] == '0') ? '1' : '0';
+        printf("Received BitStream Codeword (CORRUPTED): %s\n", receivedCodeword);
+    } else {
+        printf("Received BitStream Codeword : %s\n", receivedCodeword);
+    }
+
+    strcpy(temp, receivedCodeword);
+    dataLength = strlen(temp);
+    generatorLength = strlen(frame.generator);
+
+    for(i = 0; i <= dataLength - generatorLength; i++) {
+        if(temp[i] == '1') {
+            for(j = 0; j < generatorLength; j++) {
+                temp[i + j] = (temp[i + j] == frame.generator[j]) ? '0' : '1';
+            }
+        }
+    }
+
+    for(i = dataLength - (generatorLength - 1); i < dataLength; i++) {
+        if(temp[i] != '0') {
+            errorDetected = 1;
+            break;
+        }
+    }
+
+    printf("\n---------------------------------------------------\n");
+    printf("                   FINAL DETECT STATUS             \n");
+    printf("---------------------------------------------------\n");
+
+    if(errorDetected) {
+        printf(">>> ERROR STATUS   : YES (Error is Present in Data!)\n");
+        printf(">>> ACTIONS TAKEN  : Frame Discarded.\n");
+    } else {
+        printf(">>> ERROR STATUS   : NO (No Error Found)\n");
+        printf(">>> ACTIONS TAKEN  : Frame Accepted & Processing .\n");
+
+        int messageLength = strlen(receivedCodeword) - (generatorLength - 1);
+        strncpy(recoveredBinary, receivedCodeword, messageLength);
+        recoveredBinary[messageLength] = '\0';
+
+        binaryToText();
+
+        printf("\nSource MAC                   : %s", frame.sourceMAC);
+        printf("\nDestination MAC              : %s", frame.destinationMAC);
+        printf("\nSource IP                    : %s", frame.sourceIP);
+        printf("\nDestination IP               : %s", frame.destinationIP);
+        printf("\n\nRecovered Binary Message     : %s", recoveredBinary);
+        printf("\nRecovered Message            : %s\n", recoveredMessage);
+    }
+}
+
+int main() {
+    char srcURL[30], destURL[30], polyExpr[100];
+    int srcIndex, destIndex;
+
+    showHosts();
+
+    printf("\nEnter Source Host URL: ");
+    scanf("%29s", srcURL);
+    srcIndex = findHost(srcURL);
+    while (srcIndex == -1) {
+        printf("Invalid URL! Enter Source Host URL again: ");
+        scanf("%29s", srcURL);
+        srcIndex = findHost(srcURL);
+    }
+
+    printf("Enter Destination Host URL: ");
+    scanf("%29s", destURL);
+    destIndex = findHost(destURL);
+    while (destIndex == -1) {
+        printf("Invalid URL! Enter Destination Host URL again: ");
+        scanf("%29s", destURL);
+        destIndex = findHost(destURL);
+    }
+
+    strcpy(frame.sourceURL, hostTable[srcIndex].url);
+    strcpy(frame.sourceIP, hostTable[srcIndex].ip);
+    strcpy(frame.sourceMAC, hostTable[srcIndex].mac);
+
+    strcpy(frame.destinationURL, hostTable[destIndex].url);
+    strcpy(frame.destinationIP, hostTable[destIndex].ip);
+    strcpy(frame.destinationMAC, hostTable[destIndex].mac);
+
+    printf("\nEnter Message to send: ");
+    getchar(); // Clear newline
+    fgets(frame.message, MAXMSG, stdin);
+    frame.message[strcspn(frame.message, "\r\n")] = '\0'; // Remove trailing newline
+
+    printf("Enter Generator Polynomial (e.g. xpow3+x+1): ");
+    scanf("%99s", polyExpr);
+
+    parsePolynomial(polyExpr, frame.generator);
+    printf("Generator Binary Representation: %s\n", frame.generator);
+
+    sender();
+    appendZero();
+    crc();
+    receiver();
+
+    return 0;
+}
