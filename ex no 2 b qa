@@ -1,0 +1,125 @@
+// ==========================================
+// File: evenp.c
+// ==========================================
+#include <stdio.h>
+#include <string.h>
+
+void printBinary(int bits[]) {
+    int i;
+    for (i = 7; i >= 0; i--) {
+        printf("%d", bits[i]);
+    }
+    printf(" ");
+}
+
+int main() {
+    char text[100];
+    int total_chars;
+    int binary_data[100][8];
+    int num_changes;
+    int error_detected = 0;
+    int i, j, k;
+    int char_index, bit_pos, new_val;
+    char recovered_text[100];
+
+    printf("Enter Text: ");
+    fgets(text, sizeof(text), stdin);
+    text[strcspn(text, "\n")] = '\0';
+    total_chars = strlen(text);
+
+    printf("\n--- SENDER SIDE ---\n");
+    for (i = 0; i < total_chars; i++) {
+        int ascii = (int)text[i];
+        int count_ones = 0;
+
+        printf("\n'%c' (ASCII: %d)\n", text[i], ascii);
+        
+        /* 7-bit conversion */
+        printf("7-bit Bin: ");
+        for (j = 0; j < 7; j++) {
+            binary_data[i][j + 1] = (ascii >> j) & 1;
+            if (binary_data[i][j + 1] == 1) {
+                count_ones++;
+            }
+        }
+        for (j = 7; j >= 1; j--) {
+            printf("%d", binary_data[i][j]);
+        }
+        printf("\n");
+
+        /* Even Parity */
+        if (count_ones % 2 != 0) {
+            binary_data[i][0] = 1;
+        } else {
+            binary_data[i][0] = 0;
+        }
+
+        printf("8-bit Stream (Even): ");
+        printBinary(binary_data[i]);
+        printf("\n");
+    }
+
+    printf("\n--- ERROR INJECTION ---\n");
+    printf("Enter number of bits to change: ");
+    scanf("%d", &num_changes);
+
+    for (k = 0; k < num_changes; k++) {
+        printf("Enter char index, bit position (0-7), and new bit value (0/1): ");
+        scanf("%d %d %d", &char_index, &bit_pos, &new_val);
+
+        if (char_index >= 0 && char_index < total_chars && bit_pos >= 0 && bit_pos <= 7) {
+            binary_data[char_index][bit_pos] = new_val;
+            printf("Bit changed successfully!\n");
+        } else {
+            printf("Invalid Input Range!\n");
+        }
+    }
+
+    printf("\nData passing down after changes:\n");
+    for (i = 0; i < total_chars; i++) {
+        printf("Char %d: ", i);
+        printBinary(binary_data[i]);
+        printf("\n");
+    }
+
+    printf("\n--- RECEIVER SIDE ---\n");
+    for (i = 0; i < total_chars; i++) {
+        int total_ones = 0;
+        for (j = 0; j < 8; j++) {
+            if (binary_data[i][j] == 1) {
+                total_ones++;
+            }
+        }
+
+        if (total_ones % 2 != 0) {
+            printf("Error at Char %d ('%c')! Total 1s = %d (Odd Matrix Broken)\n", i, text[i], total_ones);
+            error_detected = 1;
+        }
+    }
+
+    printf("\n---------------------------------------------------\n");
+    printf("                   FINAL DETECT STATUS             \n");
+    printf("---------------------------------------------------\n");
+
+    if (error_detected) {
+        printf(">>> ERROR STATUS : YES (Even parity broken! Line data is corrupted)\n");
+        printf(">>> ACTIONS TAKEN: Data Frame Discarded instantly.\n");
+    } else {
+        printf(">>> ERROR STATUS : NO (No transmission errors found)\n");
+        printf(">>> ACTIONS TAKEN: Data Frame Accepted and Processed.\n");
+
+        for (i = 0; i < total_chars; i++) {
+            int current_ascii = 0;
+            for (j = 7; j >= 1; j--) {
+                current_ascii = (current_ascii << 1) + binary_data[i][j];
+            }
+            recovered_text[i] = (char)current_ascii;
+        }
+        recovered_text[total_chars] = '\0';
+
+        printf(">>> Decoded Text : %s\n", recovered_text);
+    }
+    printf("===================================================\n");
+
+    return 0;
+}
