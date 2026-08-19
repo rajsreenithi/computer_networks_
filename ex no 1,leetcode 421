@@ -1,0 +1,63 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+#define MAX_NODES 6000005  
+
+int trie[MAX_NODES][2];
+int node_count = 1;
+
+void init_trie() {
+    trie[0][0] = 0;
+    trie[0][1] = 0;
+    node_count = 1;
+}
+
+void insert(int num) {
+    int curr = 0;
+    for (int i = 30; i >= 0; i--) {
+        int bit = (num >> i) & 1;
+        if (!trie[curr][bit]) {
+            trie[node_count][0] = 0;
+            trie[node_count][1] = 0;
+            trie[curr][bit] = node_count++;
+        }
+        curr = trie[curr][bit];
+    }
+}
+
+int getMaxXORPartner(int num) {
+    int curr = 0;
+    int max_xor = 0;
+    for (int i = 30; i >= 0; i--) {
+        int bit = (num >> i) & 1;
+        int toggled_bit = 1 - bit; 
+        
+        if (trie[curr][toggled_bit]) {
+            max_xor |= (1 << i);
+            curr = trie[curr][toggled_bit];
+        } else {
+            curr = trie[curr][bit];
+        }
+    }
+    return max_xor;
+}
+
+int findMaximumXOR(int* nums, int numsSize) {
+    if (numsSize < 2) return 0;
+    
+    init_trie();
+    
+    for (int i = 0; i < numsSize; i++) {
+        insert(nums[i]);
+    }
+    
+    int global_max = 0;
+    for (int i = 0; i < numsSize; i++) {
+        int current_max = getMaxXORPartner(nums[i]);
+        if (current_max > global_max) {
+            global_max = current_max;
+        }
+    }
+    
+    return global_max;
+}
