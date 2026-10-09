@@ -1,0 +1,166 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/types.h>
+
+#define SERVER_PORT 8080
+#define BUFFER_SIZE 1024
+
+int socket_fd;
+
+int createSocket() {
+    socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (socket_fd < 0) {
+        printf("Socket creation failed \n");
+        return -1;
+    }
+    printf("Socket created successfully \n");
+    return 0;
+}
+
+void initialize_server(struct sockaddr_in *server_address) {
+    memset(server_address, 0, sizeof(*server_address));
+    server_address->sin_family = AF_INET;
+    server_address->sin_addr.s_addr = INADDR_ANY;
+    server_address->sin_port = htons(SERVER_PORT);
+}
+
+int bind_server(int socket_fd, struct sockaddr_in *server_address) {
+    if (bind(socket_fd, (struct sockaddr *)server_address, sizeof(*server_address)) < 0) {
+        printf("binding failed \n");
+        return -1;
+    }
+    printf("Server socket bind successfully \n");
+    return 0;
+}
+
+void dns() {
+    char buffer[BUFFER_SIZE];
+    struct sockaddr_in client_address;
+    socklen_t client_length;
+    int n;
+
+    while (1) {
+        client_length = sizeof(client_address);
+        memset(buffer, 0, BUFFER_SIZE);
+
+        n = recvfrom(socket_fd, buffer, BUFFER_SIZE - 1, 0, (struct sockaddr *)&client_address, &client_length);
+
+        if (n < 0) {
+            printf("receive failed \n");
+            continue;
+        }
+
+        buffer[n] = '\0';
+
+        if (fork() == 0) {
+            printf("DNS Request : %s \n", buffer);
+
+            if (strcmp(buffer, "google.com") == 0) {
+                strcpy(buffer, "142.250.195.14");
+            } else if (strcmp(buffer, "yahoo.com") == 0) {
+                strcpy(buffer, "127.0.0.1");
+            } else {
+                strcpy(buffer, "domain not found");
+            }
+
+            sendto(socket_fd, buffer, strlen(buffer), 0, (struct sockaddr *)&client_address, client_length);
+            printf("DNS response sent \n");
+            close(socket_fd);
+            exit(0);
+        }
+    }
+}
+
+void closeConnection() {
+    close(socket_fd);
+}
+
+int main() {
+    struct sockaddr_in server_address;
+
+    createSocket();
+    initialize_server(&server_address);
+    bind_server(socket_fd, &server_address);
+    dns();
+    closeConnection();
+
+    return 0;
+}#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define SERVER_IP "127.0.0.1"
+#define SERVER_PORT 8080
+#define BUFFER_SIZE 1024
+
+int socket_fd;
+struct sockaddr_in server_address;
+
+int createSocket() {
+    socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (socket_fd < 0) {
+        printf("socket creation failed \n");
+        return -1;
+    }
+    printf("socket created \n");
+    return 0;
+}
+
+void initialize_server() {
+    memset(&server_address, 0, sizeof(server_address));
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(SERVER_PORT);
+
+    if (inet_pton(AF_INET, SERVER_IP, &server_address.sin_addr) <= 0) {
+        printf("invalid server address \n");
+        exit(1);
+    }
+}
+
+void dns() {
+    char buffer[BUFFER_SIZE];
+    int n;
+
+    while (1) {
+        printf("enter domain : ");
+        fgets(buffer, BUFFER_SIZE, stdin);
+        buffer[strcspn(buffer, "\n")] = '\0';
+
+        if (strcmp(buffer, "exit") == 0) {
+            break;
+        }
+
+        sendto(socket_fd, buffer, strlen(buffer), 0, (struct sockaddr *)&server_address, sizeof(server_address));
+
+        memset(buffer, 0, BUFFER_SIZE);
+        n = recvfrom(socket_fd, buffer, BUFFER_SIZE - 1, 0, NULL, NULL);
+
+        if (n < 0) {
+            printf("receive failed \n");
+            break;
+        }
+
+        buffer[n] = '\0';
+        printf("IP address : %s \n", buffer);
+    }
+}
+
+void closeConnection() {
+    close(socket_fd);
+}
+
+int main() {
+    if (createSocket() < 0) {
+        return 1;
+    }
+    initialize_server();
+    dns();
+    closeConnection();
+
+    return 0;
+}
