@@ -1,0 +1,338 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define PORT 8080
+#define BUFFER_SIZE 1024
+#define MAX_SUBNETS 16
+
+struct Subnet {
+    int requestedNet;
+    int allocated;
+    int prefix;
+    unsigned int Network;
+    unsigned int broadcast;
+    unsigned int mask;
+};
+
+struct Subnet subnets[MAX_SUBNETS];
+int subnetCount;
+int serverSocket;
+
+unsigned int ipToInt(char *ip) {
+    int a, b, c, d;
+    sscanf(ip, "%d.%d.%d.%d", &a, &b, &c, &d);
+    return ((unsigned int)a << 24) | ((unsigned int)b << 16) | ((unsigned int)c << 8) | ((unsigned int)d);
+}
+
+void intToIp(unsigned int ip, char *str) {
+    unsigned int a, b, c, d;
+    a = (ip >> 24) & 255;
+    b = (ip >> 16) & 255;
+    c = (ip >> 8) & 255;
+    d = ip & 255;
+    sprintf(str, "%u.%u.%u.%u", a, b, c, d);
+}
+
+int nextPowerOfTwo(int n) {
+    int p = 1;
+    while (p < n) {
+        p = p * 2;
+    }
+    return p;
+}
+
+void createSocket() {
+    serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
+    if (serverSocket < 0) {
+        perror("socket creation failed");
+        exit(1);
+    }
+    printf("socket created successfully\n");
+}
+
+void bindServer() {
+    struct sockaddr_in serverAddr;
+    memset(&serverAddr, 0, sizeof(serverAddr));
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(PORT);
+    serverAddr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(serverSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
+        perror("bind failed");
+        close(serverSocket);
+        exit(1);
+    }
+    printf("server bind successfully\n");
+}
+
+void getNetworkDetails() {
+    char ip[50];
+    int prefix;
+
+    printf("\nEnter Network address : ");
+    scanf("%s", ip);
+    printf("enter prefix length : ");
+    scanf("%d", &prefix);
+    printf("enter number of subnets : ");
+    scanf("%d", &subnetCount);
+
+    if (subnetCount <= 0 || subnetCount > MAX_SUBNETS) {
+        printf("Invalid no of subnets\n");
+        exit(1);
+    }
+
+    unsigned int network = ipToInt(ip);
+    unsigned int mask;
+    if (prefix == 0) {
+        mask = 0;
+    } else {
+        mask = 0xFFFFFFFF << (32 - prefix);
+    }
+
+    network = network & mask;
+
+    subnets[0].Network = network;
+    subnets[0].prefix = prefix;
+    subnets[0].mask = mask;
+}
+
+void calculateSubnets() {
+    unsigned int baseNetwork;
+    unsigned int originalMask;
+    int originalPrefix;
+    int bits;
+    int newPrefix;
+    unsigned int blockSize;
+
+    baseNetwork = subnets[0].Network;
+    originalMask = subnets[0].mask;
+    originalPrefix = subnets[0].prefix;
+
+    bits = 0;
+    while ((1 << bits) < subnetCount) {
+        bits++;
+    }
+
+    newPrefix = originalPrefix + bits;
+    if (newPrefix > 30) {
+        printf("subnetting not possible\n");
+        exit(1);
+    }
+
+    blockSize = 1U << (32 - newPrefix);
+    unsigned int newMask = 0xFFFFFFFF << (32 - newPrefix);
+
+    for (int i = 0; i < subnetCount; i++) {
+        subnets[i].requestedNet = i + 1;
+        subnets[i].allocated = 0;
+        subnets[i].prefix = newPrefix;
+        subnets[i].Network = baseNetwork + (i * blockSize);
+        subnets[i].broadcast = subnets[i].Network + blockSize - 1;
+        subnets[i].mask = newMask;
+    }
+}
+
+void displaySubnets() {
+    char network[50];
+    char broadcast[50];
+    char mask[50];
+
+    printf("\nSUBNET Details \n");
+
+    for (int i = 0; i < subnetCount; i++) {
+        intToIp(subnets[i].Network, network);
+        intToIp(subnets[i].broadcast, broadcast);
+        intToIp(subnets[i].mask, mask);
+
+        printf("\n subnet - %d\n", i + 1);
+        printf("Network address : %s\n", network);
+
+        if (subnets[i].broadcast > subnets[i].Network + 1) {
+            char firstHost[50];
+            char lastHost[50];
+            intToIp(subnets[i].Network + 1, firstHost);
+            intToIp(subnets[i].broadcast - 1, lastHost);
+            printf("first host : %s\n", firstHost);
+            printf("last host %s\n", lastHost);
+        }
+
+        printf("broadcast address : %s\n", broadcast);
+        printf("Subnet Mask : %s\n", mask);
+        printf("prefix : %d\n", subnets[i].prefix);
+    }
+}
+
+void processDHCPSubnet(int choice, char *response) {
+    char network[50];
+    char broadcast[50];
+    char mask[50];
+    char gateway[50];
+    char assignedIP[50];
+
+    if (choice < 1 || choice > subnetCount) {
+        strcpy(response, "invalid subnet choice");
+        return;
+    }
+
+    int index = choice - 1;
+    intToIp(subnets[index].Network, network);
+    intToIp(subnets[index].broadcast, broadcast);
+    intToIp(subnets[index].mask, mask);
+    intToIp(subnets[index].Network + 1, gateway);
+
+    if (subnets[index].allocated == 0) {
+        intToIp(subnets[index].Network + 2, assignedIP);
+        subnets[index].allocated = 1;
+    } else {
+        intToIp(subnets[index].Network + 3, assignedIP);
+    }
+
+    sprintf(response, "DHCP\nSubnet : %d\nAssigned IP : %s\nNetwork : %s\nBroadcast : %s\nSubnet Mask : %s\nGateway : %s",
+            choice, assignedIP, network, broadcast, mask, gateway);
+}
+
+void processDHCP(char *message, char *response) {
+    int choice;
+
+    if (strcmp(message, "DHCPDISCOVER") == 0) {
+        sprintf(response, "DHCPOFFER %d subnets available", subnetCount);
+    } else if (strncmp(message, "DHCPREQUEST", 11) == 0) {
+        sscanf(message + 12, "%d", &choice);
+        processDHCPSubnet(choice, response);
+    } else {
+        strcpy(response, "invalid DHCP message");
+    }
+}
+
+void runDHCPServer() {
+    printf("\n concurrent UDP DHCP Server Running...\n");
+
+    while (1) {
+        char buffer[BUFFER_SIZE];
+        struct sockaddr_in clientAddr;
+        socklen_t clientLen;
+
+        memset(buffer, 0, BUFFER_SIZE);
+        clientLen = sizeof(clientAddr);
+
+        recvfrom(serverSocket, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&clientAddr, &clientLen);
+
+        pid_t pid = fork();
+        if (pid < 0) {
+            perror("fork failed");
+            continue;
+        }
+
+        if (pid == 0) {
+            char response[BUFFER_SIZE];
+            printf("\n child process created \n");
+            processDHCP(buffer, response);
+            sendto(serverSocket, response, strlen(response) + 1, 0, (struct sockaddr *)&clientAddr, clientLen);
+            printf("DHCP response sent \n");
+            close(serverSocket);
+            exit(0);
+        }
+    }
+}
+
+int main() {
+    createSocket();
+    bindServer();
+    getNetworkDetails();
+    calculateSubnets();
+    displaySubnets();
+    runDHCPServer();
+    close(serverSocket);
+
+    return 0;
+}#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define PORT 8080
+#define BUFFER_SIZE 1024
+
+int socketfd;
+struct sockaddr_in serverAddr;
+socklen_t addrLen;
+char buffer[BUFFER_SIZE];
+char clientName[100];
+int subnetChoice;
+
+void createSocket() {
+    socketfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (socketfd < 0) {
+        perror("socket creation failed");
+        exit(1);
+    }
+}
+
+void setServerAddress(char *ip, int port) {
+    memset(&serverAddr, 0, sizeof(serverAddr));
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip, &serverAddr.sin_addr) <= 0) {
+        printf("invalid server IP\n");
+        close(socketfd);
+        exit(1);
+    }
+
+    addrLen = sizeof(serverAddr);
+    printf("server address configured successfully \n");
+}
+
+void getClientDetails() {
+    printf("\n enter client name : ");
+    scanf("%s", clientName);
+}
+
+void sendDHCPDiscover() {
+    strcpy(buffer, "DHCPDISCOVER");
+    printf("\n sending DHCP Discover to server \n");
+    sendto(socketfd, buffer, strlen(buffer) + 1, 0, (struct sockaddr *)&serverAddr, addrLen);
+}
+
+void receiveDHCPOffer() {
+    memset(buffer, 0, BUFFER_SIZE);
+    recvfrom(socketfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverAddr, &addrLen);
+    printf("received DHCP Offer : %s\n", buffer);
+}
+
+void getSubnetChoice() {
+    printf("enter subnet choice : ");
+    scanf("%d", &subnetChoice);
+}
+
+void sendDHCPRequest() {
+    sprintf(buffer, "DHCPREQUEST %d", subnetChoice);
+    printf("sending DHCP Request for subnet %d\n", subnetChoice);
+    sendto(socketfd, buffer, strlen(buffer) + 1, 0, (struct sockaddr *)&serverAddr, addrLen);
+}
+
+void receiveDHCPACK() {
+    memset(buffer, 0, BUFFER_SIZE);
+    recvfrom(socketfd, buffer, BUFFER_SIZE, 0, (struct sockaddr *)&serverAddr, &addrLen);
+    printf("\n--- DHCP ACK Response ---\n%s\n", buffer);
+}
+
+int main() {
+    createSocket();
+    setServerAddress("127.0.0.1", PORT);
+    getClientDetails();
+
+    sendDHCPDiscover();
+    receiveDHCPOffer();
+
+    getSubnetChoice();
+    sendDHCPRequest();
+    receiveDHCPACK();
+
+    close(socketfd);
+    return 0;
+}
