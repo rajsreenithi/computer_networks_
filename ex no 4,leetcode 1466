@@ -1,0 +1,63 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct Edge {
+    int to;
+    int cost;
+    struct Edge* next;
+} Edge;
+
+Edge** adj;
+int* visited;
+int ans = 0;
+
+void addEdge(int u, int v, int cost) {
+    Edge* e = (Edge*)malloc(sizeof(Edge));
+    e->to = v;
+    e->cost = cost;
+    e->next = adj[u];
+    adj[u] = e;
+}
+
+void dfs(int u, int parent) {
+    visited[u] = 1;
+    Edge* curr = adj[u];
+    while (curr != NULL) {
+        int v = curr->to;
+        if (!visited[v]) {
+            ans += curr->cost;
+            dfs(v, u);
+        }
+        curr = curr->next;
+    }
+}
+
+int minReorder(int n, int** connections, int connectionsSize, int* connectionsColSize) {
+    adj = (Edge**)calloc(n, sizeof(Edge*));
+    visited = (int*)calloc(n, sizeof(int));
+    ans = 0;
+
+    for (int i = 0; i < connectionsSize; i++) {
+        int u = connections[i][0];
+        int v = connections[i][1];
+        addEdge(u, v, 1); // Original road from u -> v costs 1 to reverse
+        addEdge(v, u, 0); // Reverse path from v -> u costs 0
+    }
+
+    dfs(0, -1);
+
+    // Free memory
+    for (int i = 0; i < n; i++) {
+        Edge* curr = adj[i];
+        while (curr != NULL) {
+            Edge* temp = curr;
+            curr = curr->next;
+            free(temp);
+        }
+    }
+    free(adj);
+    free(visited);
+
+    return ans;
+}
