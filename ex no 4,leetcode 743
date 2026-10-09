@@ -1,0 +1,145 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <limits.h>
+
+typedef struct Edge {
+    int to;
+    int weight;
+    struct Edge* next;
+} Edge;
+
+
+typedef struct HeapNode {
+    int vertex;
+    int dist;
+} HeapNode;
+
+typedef struct MinHeap {
+    int size;
+    int capacity;
+    HeapNode* array;
+} MinHeap;
+
+
+void swap(HeapNode* a, HeapNode* b) {
+    HeapNode temp = *a;
+    *a = *b;
+    *b = temp;
+}
+
+
+void minHeapify(MinHeap* minHeap, int idx) {
+    int smallest = idx;
+    int left = 2 * idx + 1;
+    int right = 2 * idx + 2;
+
+    if (left < minHeap->size && minHeap->array[left].dist < minHeap->array[smallest].dist)
+        smallest = left;
+
+    if (right < minHeap->size && minHeap->array[right].dist < minHeap->array[smallest].dist)
+        smallest = right;
+
+    if (smallest != idx) {
+        swap(&minHeap->array[smallest], &minHeap->array[idx]);
+        minHeapify(minHeap, smallest);
+    }
+}
+
+// Extract the node with minimum distance
+HeapNode extractMin(MinHeap* minHeap) {
+    HeapNode root = minHeap->array[0];
+    minHeap->array[0] = minHeap->array[minHeap->size - 1];
+    minHeap->size--;
+    minHeapify(minHeap, 0);
+    return root;
+}
+
+void insertMinHeap(MinHeap* minHeap, int vertex, int dist) {
+    minHeap->size++;
+    int i = minHeap->size - 1;
+    minHeap->array[i].vertex = vertex;
+    minHeap->array[i].dist = dist;
+
+    while (i && minHeap->array[i].dist < minHeap->array[(i - 1) / 2].dist) {
+        swap(&minHeap->array[i], &minHeap->array[(i - 1) / 2]);
+        i = (i - 1) / 2;
+    }
+}
+
+int networkDelayTime(int** times, int timesSize, int* timesColSize, int n, int k) {
+   
+    Edge** adj = (Edge**)calloc(n + 1, sizeof(Edge*));
+    for (int i = 0; i < timesSize; i++) {
+        int u = times[i][0];
+        int v = times[i][1];
+        int w = times[i][2];
+        
+        Edge* edge = (Edge*)malloc(sizeof(Edge));
+        edge->to = v;
+        edge->weight = w;
+        edge->next = adj[u];
+        adj[u] = edge;
+    }
+
+    int* dist = (int*)malloc((n + 1) * sizeof(int));
+    for (int i = 1; i <= n; i++) dist[i] = INT_MAX;
+    dist[k] = 0;
+
+   
+    MinHeap* minHeap = (MinHeap*)malloc(sizeof(MinHeap));
+    minHeap->size = 0;
+    minHeap->capacity = timesSize * 2 + 1; 
+    minHeap->array = (HeapNode*)malloc(minHeap->capacity * sizeof(HeapNode));
+
+    insertMinHeap(minHeap, k, 0);
+
+   
+    while (minHeap->size > 0) {
+        HeapNode curr = extractMin(minHeap);
+        int u = curr.vertex;
+        int d = curr.dist;
+
+        
+        if (d > dist[u]) continue;
+
+        Edge* edge = adj[u];
+        while (edge != NULL) {
+            int v = edge->to;
+            int w = edge->weight;
+
+            if (dist[u] + w < dist[v]) {
+                dist[v] = dist[u] + w;
+                insertMinHeap(minHeap, v, dist[v]);
+            }
+            edge = edge->next;
+        }
+    }
+
+
+    int maxTime = 0;
+    for (int i = 1; i <= n; i++) {
+        if (dist[i] == INT_MAX) {
+            maxTime = -1; 
+            break;
+        }
+        if (dist[i] > maxTime) {
+            maxTime = dist[i];
+        }
+    }
+
+    
+    for (int i = 1; i <= n; i++) {
+        Edge* curr = adj[i];
+        while (curr != NULL) {
+            Edge* temp = curr;
+            curr = curr->next;
+            free(temp);
+        }
+    }
+    free(adj);
+    free(dist);
+    free(minHeap->array);
+    free(minHeap);
+
+    return maxTime;
+}
