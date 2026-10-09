@@ -1,0 +1,232 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+#define SERVER_PORT 8003
+
+char work[1200];
+int s;
+int len;
+struct sockaddr_in servAddr;
+struct sockaddr_in clntAddr;
+socklen_t clntAddrLen;
+char buffer[1200];
+
+unsigned short verifyChecksum(const char* binaryStr) {
+    unsigned int sum = 0;
+    int len = strlen(binaryStr);
+    int i, j;
+
+    for (i = 0; i < len; i += 16) {
+        unsigned short word = 0;
+        for (j = 0; j < 16; j++) {
+            word <<= 1;
+            if (i + j < len && binaryStr[i + j] == '1') {
+                word |= 1;
+            }
+        }
+        sum += word;
+        while (sum >> 16) {
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        }
+    }
+    return (unsigned short)(~sum);
+}
+
+int main(void) {
+    unsigned short resultSum;
+
+    memset(&servAddr, 0, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_port = htons(SERVER_PORT);
+    servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    s = socket(PF_INET, SOCK_DGRAM, 0);
+    if (s < 0) {
+        perror("Error: socket failed!");
+        exit(1);
+    }
+
+    if (bind(s, (struct sockaddr*)&servAddr, sizeof(servAddr)) < 0) {
+        perror("Error: bind failed!");
+        exit(1);
+    }
+
+    printf("Checksum server started on port %d...\n", SERVER_PORT);
+    clntAddrLen = sizeof(clntAddr);
+
+    len = recvfrom(s, buffer, sizeof(buffer) - 1, 0, (struct sockaddr*)&clntAddr, &clntAddrLen);
+    if (len < 0) {
+        perror("Error: recvfrom failed!");
+        exit(1);
+    }
+
+    buffer[len] = '\0';
+    strcpy(work, buffer);
+
+    printf("Received Codeword : %s\n", work);
+    resultSum = verifyChecksum(work);
+
+    if (resultSum == 0) {
+        strcpy(buffer, "No error detected - packet accepted");
+        printf("Result: Valid packet.\n");
+    } else {
+        strcpy(buffer, "Error detected - packet discarded");
+        printf("Result: Corrupted packet detected.\n");
+    }
+
+    sendto(s, buffer, strlen(buffer), 0, (struct sockaddr*)&clntAddr, clntAddrLen);
+    close(s);
+    return 0;
+}#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+char data[100];
+char binaryData[800];
+char codeword[1000];
+char message[1100];
+char reply[256];
+char fileName[100];
+int s;
+int len;
+char* servName;
+int servPort;
+struct sockaddr_in servAddr;
+FILE* fp;
+
+void textToBinaryString(const char* text, char* output) {
+    output[0] = '\0';
+    int i, bit;
+    for (i = 0; text[i] != '\0'; i++) {
+        char ch = text[i];
+        for (bit = 7; bit >= 0; bit--) {
+            if ((ch >> bit) & 1) strcat(output, "1");
+            else strcat(output, "0");
+        }
+    }
+}
+
+unsigned short calculateChecksum(const char* binaryStr) {
+    unsigned int sum = 0;
+    int len = strlen(binaryStr);
+    int i, j;
+
+    for (i = 0; i < len; i += 16) {
+        unsigned short word = 0;
+        for (j = 0; j < 16; j++) {
+            word <<= 1;
+            if (i + j < len && binaryStr[i + j] == '1') {
+                word |= 1;
+            }
+        }
+        sum += word;
+        while (sum >> 16) {
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        }
+    }
+    return (unsigned short)(~sum);
+}
+
+int main(int argc, char* argv[]) {
+    int pos;
+    char choice;
+    unsigned short checksum;
+    char checksumStr[17];
+
+    if (argc != 3) {
+        printf("Error: two arguments are needed\n");
+        exit(1);
+    }
+
+    servName = argv[1];
+    servPort = atoi(argv[2]);
+
+    printf("Enter input file name: ");
+    fgets(fileName, sizeof(fileName), stdin);
+    fileName[strcspn(fileName, "\n")] = '\0';
+
+    fp = fopen(fileName, "r");
+    if (fp == NULL) {
+        perror("Error: could not open file!");
+        exit(1);
+    }
+
+    fgets(data, sizeof(data), fp);
+    data[strcspn(data, "\n")] = '\0';
+    fclose(fp);
+
+    printf("Data : %s\n", data);
+    textToBinaryString(data, binaryData);
+
+    while (strlen(binaryData) % 16 != 0) {
+        strcat(binaryData, "0");
+    }
+
+    printf("Binary form : %s\n\n", binaryData);
+    checksum = calculateChecksum(binaryData);
+    checksumStr[16] = '\0';
+
+    int bit;
+    for (bit = 15; bit >= 0; bit--) {
+        checksumStr[15 - bit] = ((checksum >> bit) & 1) ? '1' : '0';
+    }
+
+    strcpy(codeword, binaryData);
+    strcat(codeword, checksumStr);
+
+    printf("Generated Checksum bits : %s\n", checksumStr);
+    printf("Codeword to send : %s\n\n", codeword);
+
+    printf("Do you want to change a bit (y/n): ");
+    scanf(" %c", &choice);
+
+    if (choice == 'y' || choice == 'Y') {
+        printf("Enter bit position to flip (1 to %d): ", (int)strlen(codeword));
+        scanf("%d", &pos);
+        pos = pos - 1;
+
+        if (pos >= 0 && pos < (int)strlen(codeword)) {
+            codeword[pos] = (codeword[pos] == '0') ? '1' : '0';
+        }
+        printf("Modified codeword : %s\n", codeword);
+    }
+
+    strcpy(message, codeword);
+    memset(&servAddr, 0, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    inet_pton(AF_INET, servName, &servAddr.sin_addr);
+    servAddr.sin_port = htons(servPort);
+
+    s = socket(PF_INET, SOCK_DGRAM, 0);
+    if (s < 0) {
+        perror("Error: socket failed!");
+        exit(1);
+    }
+
+    len = sendto(s, message, strlen(message), 0, (struct sockaddr*)&servAddr, sizeof(servAddr));
+    if (len < 0) {
+        perror("Error: sendto failed!");
+        exit(1);
+    }
+
+    len = recvfrom(s, reply, sizeof(reply) - 1, 0, NULL, NULL);
+    if (len < 0) {
+        perror("Error: recvfrom failed!");
+        exit(1);
+    }
+
+    reply[len] = '\0';
+    printf("Server response: %s\n", reply);
+
+    close(s);
+    return 0;
+}
