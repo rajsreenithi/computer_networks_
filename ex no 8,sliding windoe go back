@@ -1,0 +1,328 @@
+/* ========================================================================== */
+/*                         GO-BACK-N ARQ RECEIVER                             */
+/* ========================================================================== */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <time.h>
+
+#define SIZE 256
+#define LOSSPROB 25
+
+int sfd;
+struct sockaddr_in saddr, caddr;
+socklen_t clen;
+char buf[SIZE];
+int expected;
+
+int simloss() {
+    return (rand() % 100) < LOSSPROB;
+}
+
+unsigned char calcchk(char *d, int l) {
+    unsigned int sum = 0;
+    int i;
+    for (i = 0; i < l; i++) {
+        sum = sum + (unsigned char)d[i];
+    }
+    return (unsigned char)(sum % 0xFF);
+}
+
+void tobin(unsigned char val, char *out) {
+    int i;
+    for (i = 7; i >= 0; i--) {
+        out[7 - i] = ((val >> i) & 1) ? '1' : '0';
+    }
+    out[8] = '\0';
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        printf("Usage: %s <port>\n", argv[0]);
+        return 1;
+    }
+
+    srand(time(NULL));
+
+    printf("=== Go-Back-N ARQ Receiver ===\n\n");
+
+    sfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sfd < 0) {
+        perror("socket");
+        return 1;
+    }
+
+    memset(&saddr, 0, sizeof(saddr));
+    saddr.sin_family = AF_INET;
+    saddr.sin_port = htons(atoi(argv[1]));
+    saddr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(sfd, (struct sockaddr *)&saddr, sizeof(saddr)) < 0) {
+        perror("bind");
+        close(sfd);
+        return 1;
+    }
+
+    printf("Waiting for sender on port %s...\n", argv[1]);
+
+    expected = 0;
+    int connected = 0;
+
+    while (1) {
+        clen = sizeof(caddr);
+        int n = recvfrom(sfd, buf, SIZE - 1, 0, (struct sockaddr *)&caddr, &clen);
+        if (n < 0) {
+            perror("recvfrom");
+            continue;
+        }
+        buf[n] = '\0';
+
+        if (!connected) {
+            printf("Sender connected.\n\n");
+            connected = 1;
+        }
+
+        if (strcmp(buf, "END") == 0) {
+            printf("\n=== All packets received successfully ===\n");
+            break;
+        }
+
+        int seq;
+        unsigned int rchk;
+        char data[SIZE];
+        sscanf(buf, "%d;%u;%[^\n]", &seq, &rchk, data);
+
+        unsigned char calc = calcchk(data, strlen(data));
+        char rbin[9];
+        tobin((unsigned char)rchk, rbin);
+
+        printf("\nFrame %d received [\"%s\"], checksum %s\n", seq, data, rbin);
+
+        if (calc != (unsigned char)rchk) {
+            printf("Checksum verified: ERROR DETECTED, discarding frame, no action\n");
+            continue;
+        }
+
+        printf("Checksum verified: OK\n");
+
+        if (seq == expected) {
+            expected++;
+            printf("Sending ACK %d\n", expected);
+
+            if (simloss()) {
+                printf("ACK %d lost in transit\n", expected);
+            } else {
+                char ack[10];
+                sprintf(ack, "%d", expected);
+                sendto(sfd, ack, strlen(ack), 0, (struct sockaddr *)&caddr, clen);
+            }
+        } else {
+            printf("Frame %d out of order (expecting %d), discarded, no action\n", seq, expected);
+        }
+    }
+
+    close(sfd);
+    return 0;
+}
+
+
+/* ========================================================================== */
+/*                          GO-BACK-N ARQ SENDER                              */
+/* ========================================================================== */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <time.h>
+
+#define SIZE 256
+#define LOSSPROB 25
+
+struct pkt {
+    char data[SIZE];
+    struct pkt *next;
+};
+
+struct pkt *head = NULL, *tail = NULL;
+struct pkt *arr[100];
+int sfd;
+struct sockaddr_in raddr;
+socklen_t len;
+char buf[SIZE];
+int cpkt, cbit;
+int sentonce[100];
+
+void addpkt(char *d) {
+    struct pkt *n = (struct pkt *)malloc(sizeof(struct pkt));
+    strcpy(n->data, d);
+    n->next = NULL;
+    if (head == NULL) {
+        head = n;
+        tail = n;
+    } else {
+        tail->next = n;
+        tail = n;
+    }
+}
+
+unsigned char calcchk(char *d, int l) {
+    unsigned int sum = 0;
+    int i;
+    for (i = 0; i < l; i++) {
+        sum = sum + (unsigned char)d[i];
+    }
+    return (unsigned char)(sum % 0xFF);
+}
+
+void flipbit(char *d, int bit) {
+    int byteidx = bit / 8;
+    int bitidx = bit % 8;
+    d[byteidx] ^= (1 << (7 - bitidx));
+}
+
+int simloss() {
+    return (rand() % 100) < LOSSPROB;
+}
+
+void sendframe(int idx, int resent) {
+    int dlen = strlen(arr[idx]->data);
+    char senddata[SIZE];
+    strcpy(senddata, arr[idx]->data);
+    unsigned char chk = calcchk(arr[idx]->data, dlen);
+
+    if (idx == cpkt && !sentonce[idx]) {
+        flipbit(senddata, cbit);
+        sentonce[idx] = 1;
+        printf("Sending Frame %d [\"%s\"], data corrupted (bit %d flipped)\n", idx, arr[idx]->data, cbit);
+    } else if (resent) {
+        printf("Sending Frame %d (resent) [\"%s\"]\n", idx, arr[idx]->data);
+    } else {
+        printf("Sending Frame %d [\"%s\"]\n", idx, arr[idx]->data);
+    }
+
+    char frame[SIZE + 20];
+    sprintf(frame, "%d;%u;%s", idx, chk, senddata);
+
+    if (idx != cpkt && simloss()) {
+        printf("Frame %d lost in transit\n", idx);
+        return;
+    }
+
+    sendto(sfd, frame, strlen(frame), 0, (struct sockaddr *)&raddr, len);
+}
+
+int main(int argc, char *argv[]) {
+    int wsize, cnt;
+
+    if (argc != 3) {
+        printf("Usage: %s <receiver_ip> <port>\n", argv[0]);
+        return 1;
+    }
+
+    srand(time(NULL));
+
+    printf("=== Go-Back-N ARQ Sender ===\n\n");
+    printf("Enter window size: ");
+    scanf("%d", &wsize);
+    printf("Enter number of packets: ");
+    scanf("%d", &cnt);
+    getchar();
+
+    int i;
+    for (i = 0; i < cnt; i++) {
+        char temp[SIZE];
+        printf("Enter data for packet %d: ", i + 1);
+        fgets(temp, SIZE, stdin);
+        temp[strcspn(temp, "\n")] = '\0';
+        addpkt(temp);
+    }
+
+    struct pkt *cur = head;
+    for (i = 0; i < cnt; i++) {
+        arr[i] = cur;
+        cur = cur->next;
+    }
+
+    cpkt = -1;
+    char ans[10];
+    printf("\nDo you want to introduce an error in any packet (y/n): ");
+    scanf("%s", ans);
+    if (ans[0] == 'y' || ans[0] == 'Y') {
+        printf("Enter packet number to corrupt (1-%d): ", cnt);
+        scanf("%d", &cpkt);
+        int dlen = strlen(arr[cpkt - 1]->data);
+        printf("Enter bit position to flip (0-%d): ", dlen * 8 - 1);
+        scanf("%d", &cbit);
+        cpkt = cpkt - 1;
+        printf("Bit %d of Packet %d flipped for transmission.\n", cbit, cpkt + 1);
+    }
+
+    sfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sfd < 0) {
+        perror("socket");
+        return 1;
+    }
+
+    memset(&raddr, 0, sizeof(raddr));
+    raddr.sin_family = AF_INET;
+    raddr.sin_port = htons(atoi(argv[2]));
+    inet_pton(AF_INET, argv[1], &raddr.sin_addr);
+    len = sizeof(raddr);
+
+    struct timeval tv;
+    tv.tv_sec = 2;
+    tv.tv_usec = 0;
+    setsockopt(sfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    printf("\nConnecting to receiver...\n");
+    printf("Starting Go-Back-N transmission...\n");
+
+    int sf = 0, sn = 0;
+
+    while (sf < cnt) {
+        while (sn < cnt && sn < sf + wsize) {
+            if (sn == sf) {
+                printf("Timer started\n");
+            }
+            sendframe(sn, 0);
+            sn++;
+        }
+
+        int n = recvfrom(sfd, buf, SIZE - 1, 0, NULL, NULL);
+        if (n < 0) {
+            printf("\nTimeout! No ACK for Frame %d. Resending window from Frame %d..\n", sf, sf);
+            printf("Timer restarted\n");
+            sn = sf;
+            while (sn < cnt && sn < sf + wsize) {
+                sendframe(sn, 1);
+                sn++;
+            }
+            continue;
+        }
+
+        buf[n] = '\0';
+        int ackno = atoi(buf);
+
+        if (ackno > sf) {
+            sf = ackno;
+            if (sf == sn) {
+                printf("\nACK %d received, Timer stopped\n", ackno);
+            } else {
+                printf("\nACK %d received, window slides\n", ackno);
+            }
+        } else {
+            printf("\nOld/duplicate ACK %d received, ignoring\n", ackno);
+        }
+    }
+
+    sendto(sfd, "END", 3, 0, (struct sockaddr *)&raddr, len);
+    printf("\n=== All %d packets transmitted successfully ===\n", cnt);
+
+    close(sfd);
+    return 0;
+}
