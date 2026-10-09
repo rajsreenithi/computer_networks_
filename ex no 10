@@ -1,0 +1,402 @@
+void
+ConnectCwndTrace()
+{
+    Config::ConnectWithoutContext(
+        "/NodeList/0/$ns3::TcpL4Protocol/SocketList/0/CongestionWindow",
+        MakeCallback(&CwndChange));
+}
+
+but main() never calls ConnectCwndTrace().
+
+Make this exact change
+
+Find this part near the bottom:
+
+// Open file for CWND data
+cwndFile.open("cwnd.dat");
+
+// Run simulation
+Simulator::Stop(Seconds(simulationTime));
+
+Change it to:
+
+// Open file for CWND data
+cwndFile.open("cwnd.dat");
+
+// Connect to TCP congestion window after the TCP socket is created
+Simulator::Schedule(
+    Seconds(1.1),
+    &ConnectCwndTrace);
+
+// Run simulation
+Simulator::Stop(Seconds(simulationTime));
+
+So the bottom of your program should be:
+
+// Open file for CWND data
+cwndFile.open("cwnd.dat");
+
+// Connect to TCP congestion window after the TCP socket is created
+Simulator::Schedule(
+    Seconds(1.1),
+    &ConnectCwndTrace);
+
+// Run simulation
+Simulator::Stop(Seconds(simulationTime));
+
+Simulator::Run();
+
+Simulator::Destroy();
+
+cwndFile.close();
+
+return 0;
+}
+Then save and run
+./ns3 build
+
+If build succeeds:
+
+./ns3 run tcp-cwnd
+
+Then:
+
+cat cwnd.dat
+Important 🎯
+
+If everything works, cat cwnd.dat should not be empty. You should see lines like:
+
+1.1    536
+1.101  1072
+1.102  1608
+...
+
+Then we can run:
+
+gnuplot -persist cwnd.plt
+
+and you'll get the TCP Congestion Window vs Time graph like the image you showed.
+
+Do just those three commands now:
+
+./ns3 build
+./ns3 run tcp-cwnd
+cat cwnd.dat
+
+Send me the cat cwnd.dat output if it still gives an error. 🚀
+
+Pasted text(20261006-141621).txt
+Document
+
+Yes 👍 Your simulation itself is working now. The problem is only when you connect the CWND trace.
+
+Your current code calls:
+
+ConnectCwndTrace();
+
+before the TCP socket has been created. That's why ns-3 gives:
+
+Could not connect callback to
+/NodeList/0/$ns3::TcpL4Protocol/SocketList/0/CongestionWindow
+
+The BulkSendApplication creates the TCP socket when it starts at 1 second.
+
+1. Change your code
+
+Remove this function call from before Simulator::Run() and instead schedule it at 1 second.
+
+Use this complete version:
+
+#include "ns3/core-module.h"
+#include "ns3/network-module.h"
+#include "ns3/internet-module.h"
+#include "ns3/point-to-point-module.h"
+#include "ns3/applications-module.h"
+
+#include <fstream>
+#include <iostream>
+
+using namespace ns3;
+
+std::ofstream cwndFile;
+
+void
+CwndChange(uint32_t oldCwnd, uint32_t newCwnd)
+{
+    double time = Simulator::Now().GetSeconds();
+
+    cwndFile << time << "\t" << newCwnd << std::endl;
+
+    std::cout << "Time: " << time
+              << "s  CWND: " << newCwnd
+              << " bytes" << std::endl;
+}
+
+void
+ConnectCwndTrace()
+{
+    Config::ConnectWithoutContext(
+        "/NodeList/0/$ns3::TcpL4Protocol/SocketList/0/CongestionWindow",
+        MakeCallback(&CwndChange));
+
+    std::cout << "CWND trace connected!" << std::endl;
+}
+
+int
+main(int argc, char *argv[])
+{
+    double simulationTime = 20.0;
+
+    CommandLine cmd;
+    cmd.Parse(argc, argv);
+
+    // Create two nodes
+    NodeContainer nodes;
+    nodes.Create(2);
+
+    // Point-to-point connection
+    PointToPointHelper pointToPoint;
+
+    pointToPoint.SetDeviceAttribute(
+        "DataRate",
+        StringValue("5Mbps"));
+
+    pointToPoint.SetChannelAttribute(
+        "Delay",
+        StringValue("2ms"));
+
+    NetDeviceContainer devices =
+        pointToPoint.Install(nodes);
+
+    // Internet stack
+    InternetStackHelper internet;
+    internet.Install(nodes);
+
+    // IP addresses
+    Ipv4AddressHelper address;
+
+    address.SetBase(
+        "10.1.1.0",
+        "255.255.255.0");
+
+    Ipv4InterfaceContainer interfaces =
+        address.Assign(devices);
+
+    // TCP sink
+    uint16_t port = 5000;
+
+    Address sinkAddress(
+        InetSocketAddress(
+            interfaces.GetAddress(1),
+            port));
+
+    PacketSinkHelper sinkHelper(
+        "ns3::TcpSocketFactory",
+        InetSocketAddress(
+            Ipv4Address::GetAny(),
+            port));
+
+    ApplicationContainer sinkApp =
+        sinkHelper.Install(nodes.Get(1));
+
+    sinkApp.Start(Seconds(0.0));
+    sinkApp.Stop(Seconds(simulationTime));
+
+    // TCP Bulk Send
+    BulkSendHelper source(
+        "ns3::TcpSocketFactory",
+        sinkAddress);
+
+    source.SetAttribute(
+        "MaxBytes",
+        UintegerValue(0));
+
+    ApplicationContainer sourceApp =
+        source.Install(nodes.Get(0));
+
+    sourceApp.Start(Seconds(1.0));
+    sourceApp.Stop(Seconds(simulationTime));
+
+    // Open CWND output file
+    cwndFile.open("cwnd.dat");
+
+    // IMPORTANT:
+    // BulkSend creates the TCP socket at 1 second.
+    // Therefore connect the CWND trace after the socket exists.
+    Simulator::Schedule(
+        Seconds(1.001),
+        &ConnectCwndTrace);
+
+    Simulator::Stop(Seconds(simulationTime));
+
+    Simulator::Run();
+
+    Simulator::Destroy();
+
+    cwndFile.close();
+
+    return 0;
+}
+2. Build and run
+
+From:
+
+cd ~/ns-3-dev
+
+run:
+
+./ns3 build
+
+Then:
+
+./ns3 run tcp-cwnd
+
+You should now see something like:
+
+CWND trace connected!
+Time: 1.002s CWND: ...
+Time: 1.003s CWND: ...
+Time: 1.004s CWND: ...
+...
+
+And, importantly:
+
+ls -l cwnd.dat
+
+should show that cwnd.dat was created.
+
+Check it:
+
+head cwnd.dat
+
+and:
+
+tail cwnd.dat
+3. Generate the graph like the picture you showed 📈
+
+Once cwnd.dat exists, run:
+
+gnuplot
+
+Then inside gnuplot:
+
+set title "TCP Congestion Window vs Time"
+set xlabel "Time (seconds)"
+set ylabel "Congestion Window (bytes)"
+
+set grid
+
+plot "cwnd.dat" using 1:2 with linespoints \
+    title "TCP cwnd"
+
+That should open a Gnuplot window similar to the screenshot you showed.
+
+If you want it to look even closer to your example
+
+Use:
+
+set title "TCP Congestion Window vs Time"
+set xlabel "Time (seconds)"
+set ylabel "Congestion Window (bytes)"
+
+set xrange [1:20]
+set grid
+
+plot "cwnd.dat" using 1:2 with linespoints \
+    title "TCP cwnd"
+
+You should get the characteristic TCP congestion-window curve, with the CWND increasing and then dropping when congestion/loss occurs.
+
+One important point
+
+Your earlier successful test:
+
+./ns3 run first
+
+showed packets being exchanged:
+
+client sent 1024 bytes
+server received 1024 bytes
+server sent 1024 bytes
+client received 1024 bytes
+
+So your ns-3 installation and networking are already working. ✅
+
+The failure was specifically this:
+
+SocketList/0/CongestionWindow
+
+being accessed before SocketList/0 existed.
+
+The Simulator::Schedule(Seconds(1.001), ...) change fixes that timing issue.
+
+Perfect 👍 You are inside Gnuplot now:
+
+gnuplot>
+
+Since your NS-3 program writes the congestion-window data to cwnd.dat, you can directly plot it.
+
+1. At the gnuplot> prompt, paste this
+set title "TCP Congestion Window vs Time"
+set xlabel "Time (seconds)"
+set ylabel "Congestion Window (bytes)"
+set grid
+set key top right
+plot "cwnd.dat" using 1:2 with linespoints title "TCP cwnd"
+
+Then press Enter.
+
+You should get a graph similar to the one you showed:
+
+X-axis → Time (seconds)
+Y-axis → Congestion Window (bytes)
+TCP cwnd → plotted curve 📈
+2. If you want the graph to look cleaner
+
+Use:
+
+set title "TCP Congestion Window vs Time"
+set xlabel "Time (seconds)"
+set ylabel "Congestion Window (bytes)"
+set grid
+set key top right
+set xrange [0:20]
+plot "cwnd.dat" using 1:2 with linespoints linewidth 2 title "TCP cwnd"
+3. If Gnuplot says cwnd.dat doesn't exist
+
+Exit Gnuplot:
+
+exit
+
+Then in your NS-3 terminal run:
+
+ls -l cwnd.dat
+
+and:
+
+head cwnd.dat
+
+You should see something like:
+
+1.001 65440
+1.002 65440
+1.003 65440
+...
+
+Then start Gnuplot again:
+
+gnuplot
+
+and run:
+
+plot "cwnd.dat" using 1:2 with linespoints title "TCP cwnd"
+Important ⚠️
+
+Your C++ code currently opens:
+
+cwndFile.open("cwnd.dat");
+
+so cwnd.dat must be created in the directory from which you run ./ns3 run tcp-cwnd.
+
+If you want, 
+I can also give you the exact final C++ code + exact terminal commands so your NS-3 simulation produces a graph almost exactly like the screenshot you showed.
