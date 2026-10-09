@@ -1,0 +1,126 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <limits.h>
+#include <math.h>
+
+typedef struct HeapNode {
+    int r;
+    int c;
+    int effort;
+} HeapNode;
+
+
+typedef struct MinHeap {
+    int size;
+    int capacity;
+    HeapNode* array;
+} MinHeap;
+
+void swap(HeapNode* a, HeapNode* b) {
+    HeapNode temp = *a;
+    *a = *b;
+    *b = temp;
+}
+
+void minHeapify(MinHeap* minHeap, int idx) {
+    int smallest = idx;
+    int left = 2 * idx + 1;
+    int right = 2 * idx + 2;
+
+    if (left < minHeap->size && minHeap->array[left].effort < minHeap->array[smallest].effort)
+        smallest = left;
+
+    if (right < minHeap->size && minHeap->array[right].effort < minHeap->array[smallest].effort)
+        smallest = right;
+
+    if (smallest != idx) {
+        swap(&minHeap->array[smallest], &minHeap->array[idx]);
+        minHeapify(minHeap, smallest);
+    }
+}
+
+HeapNode extractMin(MinHeap* minHeap) {
+    HeapNode root = minHeap->array[0];
+    minHeap->array[0] = minHeap->array[minHeap->size - 1];
+    minHeap->size--;
+    minHeapify(minHeap, 0);
+    return root;
+}
+
+void insertMinHeap(MinHeap* minHeap, int r, int c, int effort) {
+    minHeap->size++;
+    int i = minHeap->size - 1;
+    minHeap->array[i].r = r;
+    minHeap->array[i].c = c;
+    minHeap->array[i].effort = effort;
+
+    while (i && minHeap->array[i].effort < minHeap->array[(i - 1) / 2].effort) {
+        swap(&minHeap->array[i], &minHeap->array[(i - 1) / 2]);
+        i = (i - 1) / 2;
+    }
+}
+
+int minimumEffortPath(int** heights, int heightsSize, int* heightsColSize) {
+    int rows = heightsSize;
+    int cols = heightsColSize[0];
+
+    
+    int** effort = (int**)malloc(rows * sizeof(int*));
+    for (int i = 0; i < rows; i++) {
+        effort[i] = (int*)malloc(cols * sizeof(int));
+        for (int j = 0; j < cols; j++) {
+            effort[i][j] = INT_MAX;
+        }
+    }
+    effort[0][0] = 0;
+
+    MinHeap* minHeap = (MinHeap*)malloc(sizeof(MinHeap));
+    minHeap->size = 0;
+    minHeap->capacity = rows * cols * 4; // Bound safety limit
+    minHeap->array = (HeapNode*)malloc(minHeap->capacity * sizeof(HeapNode));
+
+    insertMinHeap(minHeap, 0, 0, 0);
+
+  
+    int dr[] = {-1, 1, 0, 0};
+    int dc[] = {0, 0, -1, 1};
+
+    while (minHeap->size > 0) {
+        HeapNode curr = extractMin(minHeap);
+        int r = curr.r;
+        int c = curr.c;
+        int currEffort = curr.effort;
+
+        
+        if (r == rows - 1 && c == cols - 1) {
+            int ans = currEffort;
+         
+            for (int i = 0; i < rows; i++) free(effort[i]);
+            free(effort);
+            free(minHeap->array);
+            free(minHeap);
+            return ans;
+        }
+
+        
+        if (currEffort > effort[r][c]) continue;
+
+        for (int i = 0; i < 4; i++) {
+            int nr = r + dr[i];
+            int nc = c + dc[i];
+
+            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+                int nextEffort = abs(heights[r][c] - heights[nr][nc]);
+                
+                int maxEff = (currEffort > nextEffort) ? currEffort : nextEffort;
+
+                if (maxEff < effort[nr][nc]) {
+                    effort[nr][nc] = maxEff;
+                    insertMinHeap(minHeap, nr, nc, maxEff);
+                }
+            }
+        }
+    }
+
+    return 0;
+}
