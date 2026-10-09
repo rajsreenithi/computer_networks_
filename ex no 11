@@ -1,0 +1,615 @@
+What  to  do after this
+
+You have opened Cisco Packet Tracer correctly! 👍 Now let's build your Secure Enterprise Network with 3 routers, 3 switches, 3 servers, and 3 LANs step by step.
+
+Step 1: Add the 3 routers
+
+Your screenshot shows the router devices at the bottom of the screen.
+
+1. Select the router
+
+Click the router category at the bottom (already selected in your screenshot).
+
+Click the device named 2911.
+
+Click three separate places in the large white workspace to place three routers.
+
+Arrange them horizontally and label them R1, R2, R3.
+
+2. Add 3 switches
+
+Click the Switches category at the bottom (the switch-shaped icon near the left).
+
+Select 2960.
+
+Place one switch below each router.
+
+3. Add 6 PCs
+
+Click End Devices (the computer icon at the bottom-left).
+
+Select PC.
+
+Place two PCs below each switch.
+
+Step 2: Add 3 servers and the Internet cloud
+
+Click End Devices and choose Server.
+
+Place three servers:
+
+Server0 below Switch 1 — DHCP.
+
+Server1 below Switch 1 — DNS.
+
+Server2 below Switch 3 — Web.
+
+Click the WAN Emulation category (cloud icon near the bottom) and add a Cloud device above R1.
+
+Your workspace should roughly look like this:
+
+☁️ Internet Cloud
+R1
+R2
+R3
+SW1
+SW2
+SW3
+
+2 PCs + 2 servers
+
+2 PCs
+
+2 PCs + 1 server
+
+Step 3: Connect the devices
+
+Click the lightning bolt icon (Connections) at the bottom-left.
+
+Choose Copper Straight-Through and connect:
+
+First device
+
+	
+
+Second device
+
+
+
+
+PC0, PC1, Server0, Server1
+
+	
+
+SW1
+
+
+
+
+SW1
+
+	
+
+R1
+
+
+
+
+PC2, PC3
+
+	
+
+SW2
+
+
+
+
+SW2
+
+	
+
+R2
+
+
+
+
+PC4, PC5, Server2
+
+	
+
+SW3
+
+
+
+
+SW3
+
+	
+
+R3
+
+For router-to-router connections, choose Copper Cross-Over or Automatic cable selection and connect R1 to R2 and R2 to R3 using available Gigabit Ethernet ports.
+
+Connect the Internet side to R1 later; a cloud alone may require an ISP router to provide working Internet simulation.
+
+Do this first
+
+Complete Step 1 and Step 2 only, then send me a screenshot of your workspace. I will guide you through connecting the cables next, one connection at a time. 😊
+
+Isthiscorrect
+
+Yes! 😊 You have placed the 3 routers and 1 switch correctly. Now you need to add the remaining devices before connecting the cables.
+
+1. Add the remaining devices
+
+Your current workspace has:
+
+✅ 3 routers
+
+✅ 1 switch
+
+You still need:
+
+⬜ 2 more switches
+
+⬜ 6 PCs
+
+⬜ 3 servers
+
+⬜ 1 Internet cloud
+
+Add the switches
+
+Click the Switches category at the bottom-left (currently selected).
+
+Select the 2960 icon.
+
+Click twice in the workspace to add two more switches.
+
+Place one switch below each router.
+
+Add the PCs
+
+Click End Devices — the computer icon at the bottom-left.
+
+Select PC-PT.
+
+Click six times in the workspace.
+
+Arrange two PCs below each switch.
+
+Add the servers
+
+Under End Devices, select Server-PT and place three servers:
+
+Server0 near Switch0 (DHCP).
+
+Server1 near Switch0 (DNS).
+
+Server2 near Switch2 (Web).
+
+Add the cloud
+
+Click the cloud-shaped WAN Emulation category at the bottom and place a Cloud device above Router0.
+
+2. Arrange your topology
+
+Follow this layout:
+
+☁️ Internet Cloud
+Router0
+Router1
+Router2
+Switch0
+Switch1
+Switch2
+
+PC0, PC1
+
+Server0, Server1
+
+PC2, PC3
+
+PC4, PC5
+
+Server2
+
+Next: Add the remaining devices and send me another screenshot. Then I will guide you through the exact cable connections, one by one.
+
+Great! 🎉 Your topology devices are all placed correctly. You have 3 routers, 3 switches, 6 PCs, 3 servers, and 1 cloud. Now let's connect them.
+
+Step 1: Connect PCs and servers to switches
+
+At the bottom-left, click the lightning bolt icon ⚡ (Connections).
+
+Select Copper Straight-Through (the solid black line). Then click the first device and choose its port, followed by the second device and its port.
+
+Make these connections:
+
+First device and port
+
+	
+
+Second device and port
+
+
+
+
+PC0 — FastEthernet0
+
+	
+
+Switch0 — FastEthernet0/1
+
+
+
+
+PC1 — FastEthernet0
+
+	
+
+Switch0 — FastEthernet0/2
+
+
+
+
+Server0 — FastEthernet0
+
+	
+
+Switch0 — FastEthernet0/3
+
+
+
+
+Server1 — FastEthernet0
+
+	
+
+Switch0 — FastEthernet0/4
+
+
+
+
+PC2 — FastEthernet0
+
+	
+
+Switch1 — FastEthernet0/1
+
+
+
+
+PC3 — FastEthernet0
+
+	
+
+Switch1 — FastEthernet0/2
+
+
+
+
+PC4 — FastEthernet0
+
+	
+
+Switch2 — FastEthernet0/1
+
+
+
+
+PC5 — FastEthernet0
+
+	
+
+Switch2 — FastEthernet0/2
+
+
+
+
+Server2 — FastEthernet0
+
+	
+
+Switch2 — FastEthernet0/3
+
+Step 2: Connect switches to routers
+
+Continue using Copper Straight-Through.
+
+First device
+
+	
+
+Second device
+
+
+
+
+Switch0 — GigabitEthernet0/1
+
+	
+
+Router0 — GigabitEthernet0/0
+
+
+
+
+Switch1 — GigabitEthernet0/1
+
+	
+
+Router1 — GigabitEthernet0/0
+
+
+
+
+Switch2 — GigabitEthernet0/1
+
+	
+
+Router2 — GigabitEthernet0/0
+
+If the switch offers GigabitEthernet0/1, use that uplink. The exact port names may differ slightly by device model.
+
+Step 3: Connect the three routers
+
+Use Copper Cross-Over or Automatic cable selection.
+
+First device
+
+	
+
+Second device
+
+
+
+
+Router0 — GigabitEthernet0/1
+
+	
+
+Router1 — GigabitEthernet0/1
+
+
+
+
+Router1 — GigabitEthernet0/2
+
+	
+
+Router2 — GigabitEthernet0/1
+
+These links will carry traffic between your three LANs.
+
+Step 4: Connect the cloud
+
+For now, leave the cloud unconnected until the LAN configuration works. A working Internet simulation may require an ISP router between the cloud and Router0.
+
+Step 5: Check the cables
+
+Wait around 30 seconds. The link indicators should turn green after the interfaces are enabled and the connections come up. Router interfaces may remain red until configured.
+
+Your next task: Complete Steps 1–3, then send me a screenshot showing the cables. I’ll guide you through the router IP addresses and configuration commands next. 😊
+
+Follow the image above to connect your devices in Packet Tracer. 😊
+
+Click the lightning bolt icon at the bottom.
+
+Select Copper Straight-Through for PCs/servers → switches and switches → routers.
+
+Select Copper Cross-Over for the router-to-router links (or use Automatic cable selection).
+
+Click the first device, choose the port shown in the image, then click the second device and choose its port.
+
+Repeat for all connections listed in the image.
+
+Important: The cloud is shown above the routers for layout purposes; connect it later when we configure the ISP/Internet side.
+
+Once you have connected the devices, send me a screenshot and we’ll configure the IP addresses together.
+
+Today 7:47 AM
+
+If the ping works, great! 🎉 That means Server2 can communicate with R3. Next, we'll test connectivity from PC2 and then open your website.
+
+Step 1: Test the web server from PC2
+
+On PC2 → Desktop → Command Prompt, run:
+
+ping 192.168.30.10
+
+If you receive replies, continue to Step 2.
+
+If it times out, tell me; we'll check the routing between LAN2 and LAN3.
+
+Step 2: Enable the web service
+
+On Server2:
+
+Open Services → HTTP.
+
+Set HTTP to On.
+
+Leave the default index.html page enabled.
+
+Step 3: Configure DNS
+
+On Server1:
+
+Open Services → DNS.
+
+Set DNS to On.
+
+Add this record:
+
+Field
+
+	
+
+Value
+
+
+
+
+Name
+
+	
+
+www.enterprise.test
+
+
+
+
+Type
+
+	
+
+A Record
+
+
+
+
+Address
+
+	
+
+192.168.30.10
+
+Click Add.
+
+Step 4: Open the website 🌐
+
+On PC2 → Desktop → Web Browser, enter:
+
+http://www.enterprise.test
+
+If DNS is configured correctly and HTTP is enabled, the web page should open.
+
+Do Step 1 first and tell me whether PC2 can ping 192.168.30.10. We'll proceed based on that result.
+
+The packet is passing but it shows X symbol it wants to show right symbol
+
+Don't worry 😊 In Cisco Packet Tracer, the red X (❌) usually means that a packet failed at that point. If the packet is reaching the destination but you still see an X, it may be showing a failed attempt from an earlier packet.
+
+Let's check it carefully.
+
+Step 1: Clear the old simulation events
+
+Switch to Simulation mode in Packet Tracer.
+
+In the Event List, click Reset Simulation or Clear Event List (the label may vary).
+
+Send a new ping from PC2 to Server2:
+
+ping 192.168.30.10
+Step 2: Watch the new packet
+
+A green check mark or successful reply means the packet reached its destination successfully.
+
+A red X means that particular packet was dropped or failed.
+
+The first ping can fail while ARP resolves the destination's MAC address, so try the ping a second time.
+
+Step 3: Tell me where the X appears
+
+Is the red X appearing:
+
+On the connection between R2 and R3?
+
+At Server2?
+
+On the return packet travelling back to PC2?
+
+Tell me which one you see, and I'll guide you to the exact fix. 🔧
+
+C:\>ping 192.168.30.10
+
+Pinging 192.168.30.10 with 32 bytes of data:
+
+Reply from 192.168.30.10: bytes=32 time=10ms TTL=126
+
+Reply from 192.168.30.10: bytes=32 time=10ms TTL=126
+
+Reply from 192.168.30.10: bytes=32 time=10ms TTL=126
+
+Reply from 192.168.30.10: bytes=32 time=10ms TTL=126
+
+Ping statistics for 192.168.30.10:
+
+    Packets: Sent = 4, Received = 4, Lost = 0 (0% loss),
+
+Approximate round trip times in milli-seconds:
+
+    Minimum = 10ms, Maximum = 10ms, Average = 10ms
+
+Excellent! 🎉 Your ping is now 100% successful.
+
+Packets sent: 4
+
+Packets received: 4
+
+Packet loss: 0%
+
+Response time: 10 ms
+
+This confirms that PC2 can communicate with Server2 (192.168.30.10) across the routers. The network routing between these LANs is working.
+
+Next: Test your website 🌐
+Step 1: Enable HTTP on Server2
+
+Click Server2 → Services → HTTP.
+
+Set HTTP to On.
+
+Step 2: Configure DNS on Server1
+
+Click Server1 → Services → DNS.
+
+Set DNS to On.
+
+Add this record and click Add:
+
+Field
+
+	
+
+Value
+
+
+
+
+Name
+
+	
+
+www.enterprise.test
+
+
+
+
+Type
+
+	
+
+A Record
+
+
+
+
+Address
+
+	
+
+192.168.30.10
+
+Step 3: Open the website from PC2
+
+Go to PC2 → Desktop → Web Browser and enter:
+
+http://www.enterprise.test
+
+If the page doesn't open, test using the IP address directly:
+
+http://192.168.30.10
+
+Tell me whether the website opens using the IP address or the domain name. Then we'll continue with the security configuration. 🔐
