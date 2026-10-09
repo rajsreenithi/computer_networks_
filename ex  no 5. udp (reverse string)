@@ -1,0 +1,163 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define BUFFER_SIZE 1024
+
+void reverse_string(char *str) {
+    int length = strlen(str);
+    int i;
+    for (i = 0; i < length / 2; i++) {
+        char temp = str[i];
+        str[i] = str[length - 1 - i];
+        str[length - 1 - i] = temp;
+    }
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s <IP_Address> <Port>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    char *ip_input = argv[1];
+    int port_input = atoi(argv[2]);
+    int server_fd, client_fd;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t addr_size = sizeof(client_addr);
+    char buffer[BUFFER_SIZE];
+
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port_input);
+    if (inet_pton(AF_INET, ip_input, &server_addr.sin_addr) <= 0) {
+        fprintf(stderr, "Invalid IP address format.\n");
+        close(server_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Bind failed");
+        close(server_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(server_fd, 1) < 0) {
+        perror("Listen failed");
+        close(server_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Server is waiting for client...\n");
+    client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &addr_size);
+    if (client_fd < 0) {
+        perror("Accept failed");
+        close(server_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    snprintf(buffer, sizeof(buffer), "%s,%d", ip_input, port_input);
+    send(client_fd, buffer, strlen(buffer), 0);
+    memset(buffer, 0, BUFFER_SIZE);
+    recv(client_fd, buffer, BUFFER_SIZE, 0);
+
+    if (strcmp(buffer, "MATCH") == 0) {
+        memset(buffer, 0, BUFFER_SIZE);
+        recv(client_fd, buffer, BUFFER_SIZE, 0);
+        printf("Msg reached: %s\n", buffer);
+        reverse_string(buffer);
+        printf("Reversed string to send: %s\n", buffer);
+        send(client_fd, buffer, strlen(buffer), 0);
+    } else {
+        printf("Connection terminated due to mismatch on clint side.\n");
+    }
+
+    close(client_fd);
+    close(server_fd);
+    return 0;
+}
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define BUFFER_SIZE 1024
+
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s <Target_IP> <Target_Port>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    char *ip_input = argv[1];
+    int port_input = atoi(argv[2]);
+    int client_fd;
+    struct sockaddr_in server_addr;
+    char buffer[BUFFER_SIZE];
+
+    client_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (client_fd < 0) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port_input);
+    if (inet_pton(AF_INET, ip_input, &server_addr.sin_addr) <= 0) {
+        fprintf(stderr, "Invalid IP address format.\n");
+        close(client_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    if (connect(client_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Connection failed");
+        close(client_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    memset(buffer, 0, BUFFER_SIZE);
+    recv(client_fd, buffer, BUFFER_SIZE, 0);
+
+    char server_ip[100];
+    int server_port;
+    sscanf(buffer, "%[^,],%d", server_ip, &server_port);
+
+    int ip_matches = (strcmp(ip_input, server_ip) == 0);
+    int port_matches = (port_input == server_port);
+
+    if (ip_matches && port_matches) {
+        send(client_fd, "MATCH", 5, 0);
+        char msg_input[BUFFER_SIZE];
+        printf("Enter string to send: ");
+        fgets(msg_input, BUFFER_SIZE, stdin);
+        msg_input[strcspn(msg_input, "\n")] = 0;
+
+        printf("sending to server...\n");
+        send(client_fd, msg_input, strlen(msg_input), 0);
+
+        printf("Waiting for server to reverse string...\n");
+        memset(buffer, 0, BUFFER_SIZE);
+        recv(client_fd, buffer, BUFFER_SIZE, 0);
+        printf("Received reversed string from server: %s\n", buffer);
+    } else {
+        send(client_fd, "MISMATCH", 8, 0);
+        if (!ip_matches && !port_matches) {
+            printf("Both IP and Port did not match!\n");
+        } else if (!ip_matches) {
+            printf("IP did not match!\n");
+        } else if (!port_matches) {
+            printf("Port did not match!\n");
+        }
+    }
+
+    close(client_fd);
+    return 0;
+}
