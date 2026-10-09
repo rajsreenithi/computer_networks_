@@ -1,0 +1,200 @@
+#include <stdio.h>
+#include <ctype.h>
+#include <string.h>
+
+#define INF 999999
+
+typedef struct {
+    int vertexList[20];
+    int count;
+} PQueue;
+
+void InitializeQueue(PQueue *queue, int V) {
+    int i;
+    queue->count = 0;
+    for (i = 0; i < V; i++) {
+        queue->vertexList[i] = i;
+        queue->count++;
+    }
+}
+
+int IsQueueEmpty(PQueue *queue) {
+    return queue->count == 0;
+}
+
+int DeleteMin(PQueue *queue, int dist[]) {
+    int minPos = 0;
+    int minValue = dist[queue->vertexList[0]];
+    int vertex;
+    int i;
+
+    for (i = 1; i < queue->count; i++) {
+        if (dist[queue->vertexList[i]] < minValue) {
+            minValue = dist[queue->vertexList[i]];
+            minPos = i;
+        }
+    }
+
+    vertex = queue->vertexList[minPos];
+    for (i = minPos; i < queue->count - 1; i++) {
+        queue->vertexList[i] = queue->vertexList[i + 1];
+    }
+    queue->count--;
+    return vertex;
+}
+
+void UpdatePriority(PQueue *queue, int vertex, int newDistance) {
+    // Unused or priority managed directly by array in DeleteMin
+}
+
+int main() {
+    int V, E;
+    int graph[20][20];
+    int i, j, s, step;
+    
+    printf("Enter number of vertices: ");
+    if (scanf("%d", &V) != 1) return 1;
+
+    for (i = 0; i < V; i++) {
+        for (j = 0; j < V; j++) {
+            graph[i][j] = 0;
+        }
+    }
+
+    printf("Enter number of edges: ");
+    if (scanf("%d", &E) != 1) return 1;
+
+    printf("Enter edges (Source Destination Weight):\n");
+    for (i = 0; i < E; i++) {
+        char u_char, v_char;
+        int weight;
+        while (1) {
+            if (scanf(" %c %c %d", &u_char, &v_char, &weight) != 3) continue;
+            if (weight < 0) {
+                printf("Negative weights not allowed! Re-enter edge: ");
+            } else {
+                int u = toupper(u_char) - 'A';
+                int v_index = toupper(v_char) - 'A';
+                graph[u][v_index] = weight;
+                break;
+            }
+        }
+    }
+
+    for (s = 0; s < V; s++) {
+        int dist[20];
+        int prev[20];
+        int hops[20];
+        PQueue queue;
+
+        for (i = 0; i < V; i++) {
+            dist[i] = INF;
+            prev[i] = -1;
+            hops[i] = 0;
+        }
+
+        dist[s] = 0;
+        InitializeQueue(&queue, V);
+
+        printf("\n========================================================================================\n");
+        printf("                       STEP-BY-STEP DISTANCE LOG TABLE (SOURCE: %c)\n", 'A' + s);
+        printf("========================================================================================\n");
+        printf("%-8s | %-16s | %-20s | %-22s\n", "Step", "Extracted Node", "Path Addition", "New Shortest Distance");
+        printf("----------------------------------------------------------------------------------------\n");
+
+        step = 1;
+        while (!IsQueueEmpty(&queue)) {
+            int u = DeleteMin(&queue, dist);
+
+            if (dist[u] == INF) {
+                printf("%-8d | %-16c | %-20s | %-22s\n", step, 'A' + u, "-", "Unreachable / INF");
+                step++;
+                continue;
+            } else {
+                int evaluated_edges = 0;
+                for (v = 0; v < V; v++) {
+                    if (graph[u][v] != 0) {
+                        int edgeWeight = graph[u][v];
+                        char addMsg[50];
+                        char distMsg[50];
+                        evaluated_edges++;
+
+                        snprintf(addMsg, sizeof(addMsg), "%d + %d = %d", dist[u], edgeWeight, dist[u] + edgeWeight);
+
+                        if (dist[u] + edgeWeight < dist[v] || 
+                           (dist[u] + edgeWeight == dist[v] && (hops[u] + 1 >= hops[v]))) {
+                            
+                            int oldDist = dist[v];
+                            dist[v] = dist[u] + edgeWeight;
+                            prev[v] = u;
+                            hops[v] = hops[u] + 1;
+                            UpdatePriority(&queue, v, dist[v]);
+
+                            if (oldDist == INF) {
+                                snprintf(distMsg, sizeof(distMsg), "INF -> %d", dist[v]);
+                            } else if (oldDist == dist[v]) {
+                                snprintf(distMsg, sizeof(distMsg), "%d -> %d (Alternative Path)", oldDist, dist[v]);
+                            } else {
+                                snprintf(distMsg, sizeof(distMsg), "%d -> %d (Improved!)", oldDist, dist[v]);
+                            }
+                        } else {
+                            snprintf(distMsg, sizeof(distMsg), "%d >= %d (Ignored)", dist[u] + edgeWeight, dist[v]);
+                        }
+
+                        printf("%-8d | %-16c | %-20s | %-22s\n", step, 'A' + u, addMsg, distMsg);
+                    }
+                }
+
+                if (evaluated_edges == 0) {
+                    printf("%-8d | %-16c | %-20s | %-22s\n", step, 'A' + u, "-", "No Outgoing Edges");
+                }
+            }
+            step++;
+        }
+
+        printf("\n----------------------------------------------------------------------------------------\n");
+        printf("Source   | Destination   | Next Node to Visit | Final Distance | Full Path\n");
+        printf("----------------------------------------------------------------------------------------\n");
+
+        for (dest = 0; dest < V; dest++) {
+            printf("%-8c | %-13c | ", 'A' + s, 'A' + dest);
+
+            if (s == dest) {
+                printf("%-20s | Dist: %-8d | %c\n", "Self (0)", 0, 'A' + s);
+            } else if (dist[dest] == INF) {
+                printf("%-20s | Dist: %-8s | %s\n", "None", "INF", "INF");
+            } else {
+                int current = dest;
+                while (prev[current] != -1 && prev[current] != s) {
+                    current = prev[current];
+                }
+                char nextHop = 'A' + current;
+
+                int pathNodes[20];
+                int pathCount = 0;
+                current = dest;
+
+                while (current != -1) {
+                    pathNodes[pathCount++] = current;
+                    current = prev[current];
+                }
+
+                char fullPathStr[100] = "";
+                int pos = 0;
+
+                for (i = pathCount - 1; i >= 0; i--) {
+                    if (i == 0) {
+                        pos += snprintf(fullPathStr + pos, sizeof(fullPathStr) - pos, "%c", 'A' + pathNodes[i]);
+                    } else {
+                        pos += snprintf(fullPathStr + pos, sizeof(fullPathStr) - pos, "%c -> ", 'A' + pathNodes[i]);
+                    }
+                }
+
+                printf("%-20c | Dist: %-8d | %s\n", nextHop, dist[dest], fullPathStr);
+            }
+        }
+        printf("----------------------------------------------------------------------------------------\n");
+    }
+
+    return 0;
+}
